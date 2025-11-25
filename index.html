@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Embedded PDF Document</title>
+    <title>Embedded PDF Document (Cloud Hosted)</title>
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Configure Tailwind for Inter font -->
@@ -18,9 +18,9 @@
 
     <div class="w-full max-w-5xl bg-white shadow-xl rounded-xl p-4 md:p-8">
         <header class="mb-6 border-b pb-4">
-            <h1 class="text-3xl font-extrabold text-gray-900">Document Preview</h1>
+            <h1 class="text-3xl font-extrabold text-gray-900">Cloud-Hosted Document Preview</h1>
             <p class="text-sm text-gray-500 mt-1">
-                This area embeds your PDF. Scroll down to view the content.
+                This area embeds the PDF using a stable, publicly accessible URL.
             </p>
         </header>
 
@@ -28,7 +28,7 @@
         <div class="w-full">
             <iframe 
                 id="pdf-viewer"
-                src="./Pearson Biology Y12.pdf" 
+                src="https://your-permanent-storage-url.com/documents/Pearson Biology Y12.pdf" 
                 class="w-full h-[600px] border-2 border-gray-200 rounded-lg shadow-inner"
                 title="Embedded PDF Document">
                 
@@ -36,7 +36,7 @@
                 <p class="p-4 text-center text-red-600 bg-red-50 border border-red-200 rounded-lg">
                     <span class="font-semibold">Error:</span> Your browser doesn't support iframes or the PDF could not load. 
                     Please ensure the file path is correct. 
-                    <a href="./Pearson Biology Y12.pdf" class="text-blue-600 hover:underline font-medium">Click here to download the PDF</a>.
+                    <a href="https://your-permanent-storage-url.com/documents/Pearson Biology Y12.pdf" class="text-blue-600 hover:underline font-medium">Click here to download the PDF</a>.
                 </p>
             </iframe>
         </div>
@@ -52,8 +52,8 @@
         // Simple JavaScript reminder about the PDF file path
         document.addEventListener('DOMContentLoaded', () => {
             const iframe = document.getElementById('pdf-viewer');
-            if (iframe && iframe.src.includes('Pearson Biology Y12.pdf')) {
-                console.log("INFO: The PDF source is set to './Pearson Biology Y12.pdf'. Ensure this file exists in the same directory.");
+            if (iframe && iframe.src.includes('your-permanent-storage-url.com')) {
+                console.warn("ACTION REQUIRED: Replace 'https://your-permanent-storage-url.com/documents/Pearson Biology Y12.pdf' with the actual, permanent URL of your uploaded file.");
             }
         });
     </script>
