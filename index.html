@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Embedded PDF Document (Cloud Hosted)</title>
+    <title>200 MB+ Capable Local PDF Viewer with Persistence</title>
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Configure Tailwind for Inter font -->
@@ -16,46 +16,246 @@
 </head>
 <body class="p-4 md:p-8 min-h-screen flex items-start justify-center">
 
-    <div class="w-full max-w-5xl bg-white shadow-xl rounded-xl p-4 md:p-8">
+    <div class="w-full max-w-5xl bg-white shadow-2xl rounded-xl p-6 md:p-8">
         <header class="mb-6 border-b pb-4">
-            <h1 class="text-3xl font-extrabold text-gray-900">Cloud-Hosted Document Preview</h1>
+            <h1 class="text-3xl font-extrabold text-gray-900">Large PDF Viewer with Local Persistence</h1>
             <p class="text-sm text-gray-500 mt-1">
-                This area embeds the PDF using a stable, publicly accessible URL.
+                Upload a large PDF (200 MB+) which will be saved permanently on this device using IndexedDB.
             </p>
         </header>
+        
+        <!-- WARNING for persistence -->
+        <div id="persistence-warning" class="p-3 mb-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 rounded-md text-sm font-bold">
+            <p>⚠️ IMPORTANT: Local Storage Only</p>
+            <p>The file is saved **only on this device** and is **not shared** with other users or computers. The browser may delete it under disk pressure, but it will persist across refreshes.</p>
+        </div>
 
         <!-- PDF Embed Container -->
-        <div class="w-full">
+        <div class="w-full relative">
+            <p id="loading-message" class="absolute inset-0 flex items-center justify-center text-center text-lg font-semibold bg-gray-100/90 z-10 p-4 rounded-lg transition-opacity duration-300">
+                Checking local storage for a previously saved PDF...
+            </p>
             <iframe 
                 id="pdf-viewer"
-                src="https://your-permanent-storage-url.com/documents/Pearson Biology Y12.pdf" 
-                class="w-full h-[600px] border-2 border-gray-200 rounded-lg shadow-inner"
+                src="" 
+                class="w-full h-[600px] border-2 border-gray-300 rounded-lg shadow-inner bg-white"
                 title="Embedded PDF Document">
                 
                 <!-- Fallback message -->
                 <p class="p-4 text-center text-red-600 bg-red-50 border border-red-200 rounded-lg">
-                    <span class="font-semibold">Error:</span> Your browser doesn't support iframes or the PDF could not load. 
-                    Please ensure the file path is correct. 
-                    <a href="https://your-permanent-storage-url.com/documents/Pearson Biology Y12.pdf" class="text-blue-600 hover:underline font-medium">Click here to download the PDF</a>.
+                    Your browser does not support PDF viewing.
                 </p>
             </iframe>
         </div>
 
-        <footer class="mt-6 pt-4 border-t">
-            <p class="text-xs text-gray-400 text-center">
-                Embedded using a standard HTML iframe tag.
-            </p>
-        </footer>
+        <!-- Uploader Control Panel -->
+        <div class="mt-6 pt-4 border-t flex flex-col sm:flex-row items-center justify-between space-y-4 sm:space-y-0 sm:space-x-4">
+            
+            <!-- File Input (Hidden, Triggered by Button) -->
+            <input type="file" id="pdf-file-input" accept="application/pdf" class="hidden" onchange="handleFileUpload(event)">
+            
+            <button 
+                id="select-button"
+                onclick="document.getElementById('pdf-file-input').click()"
+                class="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-300 transform hover:scale-[1.02]">
+                1. Select & Save PDF
+            </button>
+
+            <button 
+                id="clear-button"
+                onclick="clearLocalFile()"
+                class="w-full sm:w-auto px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 transition duration-300 transform hover:scale-[1.02]">
+                2. Clear Local Storage
+            </button>
+        </div>
+
+        <p id="status-message" class="mt-4 text-sm text-center font-medium text-gray-700 hidden">
+            Ready to load files.
+        </p>
+
     </div>
 
     <script>
-        // Simple JavaScript reminder about the PDF file path
-        document.addEventListener('DOMContentLoaded', () => {
-            const iframe = document.getElementById('pdf-viewer');
-            if (iframe && iframe.src.includes('your-permanent-storage-url.com')) {
-                console.warn("ACTION REQUIRED: Replace 'https://your-permanent-storage-url.com/documents/Pearson Biology Y12.pdf' with the actual, permanent URL of your uploaded file.");
+        const viewer = document.getElementById('pdf-viewer');
+        const loadingMessage = document.getElementById('loading-message');
+        const statusMessage = document.getElementById('status-message');
+        let currentBlobUrl = null;
+        const DB_NAME = 'PDFStore';
+        const DB_VERSION = 1;
+        const STORE_NAME = 'pdfs';
+        let db = null;
+
+        function displayStatus(message, isError = false) {
+            statusMessage.textContent = message;
+            statusMessage.classList.remove('hidden', 'text-green-600', 'text-red-600', 'text-gray-700');
+            statusMessage.classList.add(isError ? 'text-red-600' : 'text-green-600');
+        }
+        
+        // --- IndexedDB Functions ---
+
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+                request.onerror = (event) => {
+                    console.error("IndexedDB Error:", event.target.error);
+                    reject(event.target.error);
+                };
+
+                request.onsuccess = (event) => {
+                    db = event.target.result;
+                    resolve(db);
+                };
+
+                request.onupgradeneeded = (event) => {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+                    }
+                };
+            });
+        }
+
+        async function saveFileToIndexedDB(file) {
+            await openDB();
+            const transaction = db.transaction([STORE_NAME], 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            
+            // Store the Blob object directly under a fixed key 'main_pdf'
+            const data = { id: 'main_pdf', name: file.name, blob: file };
+            const request = store.put(data);
+
+            return new Promise((resolve, reject) => {
+                request.onsuccess = () => resolve();
+                request.onerror = (event) => reject(event.target.error);
+            });
+        }
+
+        async function loadFileFromIndexedDB() {
+            await openDB();
+            const transaction = db.transaction([STORE_NAME], 'readonly');
+            const store = transaction.objectStore(STORE_NAME);
+            const request = store.get('main_pdf');
+
+            return new Promise((resolve, reject) => {
+                request.onsuccess = (event) => resolve(event.target.result);
+                request.onerror = (event) => reject(event.target.error);
+            });
+        }
+
+        async function deleteFileFromIndexedDB() {
+            await openDB();
+            const transaction = db.transaction([STORE_NAME], 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            const request = store.delete('main_pdf');
+
+            return new Promise((resolve, reject) => {
+                request.onsuccess = () => resolve();
+                request.onerror = (event) => reject(event.target.error);
+            });
+        }
+
+        // --- Viewer Functions ---
+
+        function displayBlob(fileBlob, fileName, fileSizeMB) {
+             // Step 1: Revoke any previous Blob URL
+            if (currentBlobUrl) {
+                URL.revokeObjectURL(currentBlobUrl);
             }
-        });
+
+            // Step 2: Create a URL for the file Blob object
+            try {
+                loadingMessage.textContent = `Loading file: ${fileName} (${fileSizeMB}MB)... This may take a moment for large files.`;
+                loadingMessage.classList.remove('hidden');
+                
+                currentBlobUrl = URL.createObjectURL(fileBlob);
+                
+                // Step 3: Set the iframe source to the Blob URL
+                viewer.onload = () => {
+                    loadingMessage.classList.add('hidden');
+                    displayStatus(`Successfully loaded ${fileName}.`, false);
+                    viewer.onload = null; 
+                };
+                viewer.onerror = () => {
+                    loadingMessage.classList.remove('hidden');
+                    loadingMessage.textContent = 'Error displaying the PDF in the viewer. Try downloading it.';
+                    displayStatus('Error loading PDF.', true);
+                    viewer.onerror = null;
+                };
+                
+                viewer.src = currentBlobUrl;
+
+            } catch (error) {
+                console.error("Local File Load Error:", error);
+                loadingMessage.textContent = 'An unexpected error occurred during loading.';
+                displayStatus('Loading FAILED.', true);
+            }
+        }
+        
+        async function clearLocalFile() {
+            try {
+                await deleteFileFromIndexedDB();
+                viewer.src = "";
+                loadingMessage.textContent = 'Local storage cleared. Please select a PDF file below to save a new one.';
+                loadingMessage.classList.remove('hidden');
+                displayStatus('PDF deleted from local storage.', false);
+
+                if (currentBlobUrl) {
+                    URL.revokeObjectURL(currentBlobUrl);
+                    currentBlobUrl = null;
+                }
+            } catch (e) {
+                displayStatus('Failed to clear local storage.', true);
+            }
+        }
+
+        window.handleFileUpload = async function(event) {
+            const file = event.target.files[0];
+            
+            if (!file) {
+                displayStatus("No file selected.", true);
+                return;
+            }
+
+            if (file.type !== 'application/pdf') {
+                displayStatus("Please select a valid PDF file (.pdf).", true);
+                return;
+            }
+            
+            const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+            displayStatus(`Saving ${file.name} (${fileSizeMB}MB) to local IndexedDB...`, false);
+
+            try {
+                await saveFileToIndexedDB(file);
+                displayBlob(file, file.name, fileSizeMB);
+                displayStatus(`Successfully saved and loaded ${file.name} (${fileSizeMB}MB) locally.`, false);
+            } catch (error) {
+                console.error("IndexedDB Save Error:", error);
+                displayStatus('Save FAILED. IndexedDB access or storage quota may be the issue.', true);
+            }
+            event.target.value = null; // Clear input field
+        };
+
+        async function initializeViewer() {
+            try {
+                const data = await loadFileFromIndexedDB();
+                if (data && data.blob) {
+                    const file = data.blob;
+                    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                    loadingMessage.textContent = `Found previously saved PDF: ${data.name} (${fileSizeMB}MB). Loading now...`;
+                    displayBlob(file, data.name, fileSizeMB);
+                } else {
+                    loadingMessage.textContent = 'No locally saved PDF found. Use the button below to upload and save one.';
+                    displayStatus('Ready to load files.', false);
+                }
+            } catch (error) {
+                console.error("Initialization Error:", error);
+                loadingMessage.textContent = 'Error accessing local storage. Please try reloading or clearing site data.';
+                displayStatus('Initialization FAILED.', true);
+            }
+        }
+
+        window.onload = initializeViewer;
     </script>
 </body>
 </html>
